@@ -36,7 +36,8 @@
     });
 
     // Add nodes to the graph
-    const cardWidth = 250;
+    // Cards will expand up to 333px, so use that as the width for layout
+    const cardWidth = 333;
     const cardHeight = 80;
 
     todos.forEach((todo) => {
@@ -314,12 +315,13 @@
         <div
           class="card-wrapper"
           data-todo-id={todo.id}
-          style="left: {pos.x}px; top: {pos.y}px; width: {pos.width}px;"
+          style="left: {pos.x}px; top: {pos.y}px;"
         >
           <div class="card-inner">
             <TodoCard
               {todo}
               {isDrawingArrow}
+              useTextarea={true}
               dependencies={dagInstance.getDependencies(todo.id)}
               dependents={dagInstance.getDependents(todo.id)}
               on:arrowStart={handleArrowStart}
@@ -369,6 +371,9 @@
   .card-wrapper {
     position: absolute;
     pointer-events: auto;
+    min-width: 250px;
+    max-width: 333px;
+    width: fit-content;
   }
 
   .card-inner {
@@ -379,19 +384,40 @@
 
   .card-inner :global(.todo-card) {
     margin-bottom: 0;
-    width: 100%;
+    width: fit-content;
+    min-width: 250px;
+    max-width: 333px;
     box-sizing: border-box;
     overflow: visible;
+    height: auto;
   }
 
   .card-inner :global(.card-content) {
     flex-wrap: nowrap;
     min-width: 0;
+    align-items: center;
   }
 
   .card-inner :global(.todo-text) {
-    min-width: 0;
-    flex-shrink: 1;
+    min-width: 100px;
+    width: auto;
+    max-width: calc(
+      333px - 120px
+    ); /* 333px card - arrow zone - checkbox - delete - gaps */
+    flex: 0 1 auto;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+    line-height: 1.4;
+    overflow: hidden;
+    resize: none;
+  }
+
+  /* Auto-resize textarea to fit content */
+  .card-inner :global(textarea.todo-text) {
+    height: auto;
+    min-height: 1.4em;
+    max-height: 200px;
   }
 
   .card-inner :global(.delete-btn) {

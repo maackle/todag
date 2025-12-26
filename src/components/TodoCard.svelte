@@ -10,6 +10,21 @@
     const dispatch = createEventDispatcher();
 
     export let isDrawingArrow = false;
+    export let useTextarea = false; // Use textarea instead of input for multi-line text
+    
+    let textareaElement;
+    
+    // Auto-resize textarea to fit content
+    function autoResizeTextarea() {
+        if (textareaElement && useTextarea) {
+            textareaElement.style.height = 'auto';
+            textareaElement.style.height = textareaElement.scrollHeight + 'px';
+        }
+    }
+    
+    $: if (todo.text && useTextarea) {
+        autoResizeTextarea();
+    }
 
     let arrowZoneHovered = false;
 
@@ -75,15 +90,30 @@
             checked={todo.completed}
             on:change={() => dispatch("toggle", { id: todo.id })}
         />
-        <input
-            type="text"
-            class="todo-text"
-            class:completed={todo.completed}
-            value={todo.text}
-            on:input={(e) =>
-                dispatch("update", { id: todo.id, text: e.target.value })}
-            placeholder="Enter todo..."
-        />
+        {#if useTextarea}
+            <textarea
+                bind:this={textareaElement}
+                class="todo-text"
+                class:completed={todo.completed}
+                value={todo.text}
+                on:input={(e) => {
+                    dispatch("update", { id: todo.id, text: e.target.value });
+                    autoResizeTextarea();
+                }}
+                placeholder="Enter todo..."
+                rows="1"
+            ></textarea>
+        {:else}
+            <input
+                type="text"
+                class="todo-text"
+                class:completed={todo.completed}
+                value={todo.text}
+                on:input={(e) =>
+                    dispatch("update", { id: todo.id, text: e.target.value })}
+                placeholder="Enter todo..."
+            />
+        {/if}
         <button
             class="delete-btn"
             on:click={() => dispatch("delete", { id: todo.id })}
