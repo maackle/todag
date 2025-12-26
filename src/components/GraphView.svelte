@@ -13,13 +13,14 @@
   let hoveredEdge = null; // [fromId, toId] or null
   let graphLayout = new Map(); // nodeId -> { x, y, width, height }
   let edgePaths = new Map(); // [fromId, toId] -> path string
+  let actualCardHeights = new Map(); // nodeId -> actual height in pixels
 
   $: todoList = $todos;
   $: dagInstance = $dag;
   $: edges = dagInstance ? dagInstance.getAllEdges() : [];
 
   // Calculate layout using dagre
-  function calculateLayout(dagInst, todos) {
+  function calculateLayout(dagInst, todos, measuredHeights) {
     if (!dagInst || !todos || todos.length === 0) {
       return { positions: new Map(), edgePaths: new Map() };
     }
@@ -38,9 +39,11 @@
     // Add nodes to the graph
     // Cards will expand up to 333px, so use that as the width for layout
     const cardWidth = 333;
-    const cardHeight = 80;
+    const defaultCardHeight = 80;
 
     todos.forEach((todo) => {
+      // Use measured height if available, otherwise use default
+      const cardHeight = measuredHeights?.get(todo.id) || defaultCardHeight;
       g.setNode(todo.id, {
         width: cardWidth,
         height: cardHeight,
@@ -102,6 +105,67 @@
     return { positions, edgePaths: paths };
   }
 
+  // Recalculate edge paths function
+  function recalculateEdgePaths() {
+    if (graphLayout.size === 0 || edges.length === 0) return;
+
+    const g = new dagre.graphlib.Graph();
+    g.setDefaultEdgeLabel(() => ({}));
+    g.setGraph({
+      rankdir: "TB",
+      nodesep: 50,
+      ranksep: 100,
+      marginx: 50,
+      marginy: 50,
+    });
+
+    const cardWidth = 333;
+    todoList.forEach((todo) => {
+      const pos = graphLayout.get(todo.id);
+      if (pos) {
+        const cardHeight = actualCardHeights.get(todo.id) || pos.height || 80;
+        g.setNode(todo.id, {
+          width: cardWidth,
+          height: cardHeight,
+          label: todo.id,
+        });
+      }
+    });
+
+    edges.forEach(([fromId, toId]) => {
+      g.setEdge(fromId, toId);
+    });
+
+    dagre.layout(g);
+
+    // Update edge paths
+    const newPaths = new Map();
+    g.edges().forEach((edge) => {
+      const edgeData = g.edge(edge);
+      if (edgeData && edgeData.points && edgeData.points.length > 0) {
+        let path = `M ${edgeData.points[0].x} ${edgeData.points[0].y}`;
+        for (let i = 1; i < edgeData.points.length; i++) {
+          path += ` L ${edgeData.points[i].x} ${edgeData.points[i].y}`;
+        }
+        newPaths.set([edge.v, edge.w].join("->"), path);
+      } else {
+        const fromPos = graphLayout.get(edge.v);
+        const toPos = graphLayout.get(edge.w);
+        if (fromPos && toPos) {
+          const fromX = fromPos.centerX || fromPos.x + fromPos.width / 2;
+          const fromY = fromPos.y + fromPos.height;
+          const toX = toPos.centerX || toPos.x + toPos.width / 2;
+          const toY = toPos.y;
+          newPaths.set(
+            [edge.v, edge.w].join("->"),
+            `M ${fromX} ${fromY} L ${toX} ${toY}`,
+          );
+        }
+      }
+    });
+    edgePaths = new Map(newPaths);
+  }
+
   // Get edge path from stored paths
   function getEdgePath(fromId, toId) {
     const key = [fromId, toId].join("->");
@@ -120,22 +184,82 @@
     return `M ${fromX} ${fromY} L ${toX} ${toY}`;
   }
 
-  $: if (dagInstance && todoList) {
-    const result = calculateLayout(dagInstance, todoList);
-    graphLayout = result.positions;
-    edgePaths = result.edgePaths;
-    // Update SVG size based on layout
-    if (graphLayout.size > 0) {
-      const maxX = Math.max(
-        ...Array.from(graphLayout.values()).map((p) => p.x + p.width),
+  // Measure actual card heights
+  function measureCardHeights() {
+    if (!containerElement) return new Map();
+    const heights = new Map();
+    todoList.forEach((todo) => {
+      const element = containerElement.querySelector(
+        `[data-todo-id="${todo.id}"] .card-inner .todo-card`,
       );
-      const maxY = Math.max(
-        ...Array.from(graphLayout.values()).map((p) => p.y + p.height),
-      );
-      if (svgElement) {
-        svgElement.setAttribute("width", Math.max(800, maxX + 100));
-        svgElement.setAttribute("height", Math.max(600, maxY + 100));
+      if (element) {
+        const rect = element.getBoundingClientRect();
+        heights.set(todo.id, Math.max(80, rect.height));
       }
+    });
+    return heights;
+  }
+
+  // Recalculate layout when heights change
+  $: if (dagInstance && todoList) {
+    // First pass: use default heights
+    const result = calculateLayout(dagInstance, todoList, actualCardHeights);
+    graphLayout = new Map(result.positions);
+    edgePaths = new Map(result.edgePaths);
+
+    // Then measure actual heights and recalculate
+    setTimeout(() => {
+      const newHeights = measureCardHeights();
+      if (
+        Array.from(newHeights.entries()).some(
+          ([id, height]) => actualCardHeights.get(id) !== height,
+        )
+      ) {
+        actualCardHeights = new Map(newHeights);
+        const updatedResult = calculateLayout(
+          dagInstance,
+          todoList,
+          actualCardHeights,
+        );
+        graphLayout = new Map(updatedResult.positions);
+        edgePaths = new Map(updatedResult.edgePaths);
+        // Recalculate edge paths with new layout
+        recalculateEdgePaths();
+      }
+    }, 50);
+  }
+
+  // Force edge path recalculation when layout or heights change
+  // Create a reactive key that changes when layout updates
+  $: layoutKey = JSON.stringify(
+    Array.from(graphLayout.entries()).map(([id, pos]) => [
+      id,
+      pos.x,
+      pos.y,
+      pos.height,
+    ]),
+  );
+  $: heightsKey = JSON.stringify(Array.from(actualCardHeights.entries()));
+
+  // Recalculate edges when layout or heights change
+  $: if (graphLayout.size > 0 && edges.length > 0) {
+    // Access layoutKey and heightsKey to make them dependencies
+    void layoutKey;
+    void heightsKey;
+    recalculateEdgePaths();
+  }
+
+  // Update SVG size based on layout
+  $: if (graphLayout.size > 0) {
+    const maxX = Math.max(
+      ...Array.from(graphLayout.values()).map((p) => p.x + p.width),
+    );
+    const maxY = Math.max(
+      ...Array.from(graphLayout.values()).map((p) => p.y + p.height),
+    );
+    if (svgElement) {
+      svgElement.setAttribute("width", Math.max(800, maxX + 100));
+      svgElement.setAttribute("height", Math.max(600, maxY + 100));
     }
   }
 
@@ -211,11 +335,58 @@
   onMount(() => {
     // Initial layout calculation
     if (dagInstance && todoList) {
-      const result = calculateLayout(dagInstance, todoList);
+      const result = calculateLayout(dagInstance, todoList, actualCardHeights);
       graphLayout = result.positions;
       edgePaths = result.edgePaths;
+
+      // Measure heights after initial render
+      setTimeout(() => {
+        actualCardHeights = measureCardHeights();
+        const updatedResult = calculateLayout(
+          dagInstance,
+          todoList,
+          actualCardHeights,
+        );
+        graphLayout = updatedResult.positions;
+        edgePaths = updatedResult.edgePaths;
+      }, 100);
     }
   });
+
+  // Watch for text changes to remeasure heights
+  let heightCheckTimeout;
+  $: if (todoList.length > 0 && containerElement) {
+    // Debounce height measurement
+    if (heightCheckTimeout) clearTimeout(heightCheckTimeout);
+    heightCheckTimeout = setTimeout(() => {
+      const newHeights = measureCardHeights();
+      if (
+        Array.from(newHeights.entries()).some(
+          ([id, height]) => actualCardHeights.get(id) !== height,
+        )
+      ) {
+        actualCardHeights = new Map(newHeights);
+        if (dagInstance) {
+          const updatedResult = calculateLayout(
+            dagInstance,
+            todoList,
+            actualCardHeights,
+          );
+          graphLayout = new Map(updatedResult.positions);
+          edgePaths = new Map(updatedResult.edgePaths);
+          // Recalculate edge paths with new layout
+          recalculateEdgePaths();
+        }
+      }
+    }, 150);
+  }
+
+  // Watch todo text changes to trigger remeasurement and edge updates
+  $: if (todoList.length > 0) {
+    // Create a key from todo texts to detect changes
+    const textKey = todoList.map((t) => `${t.id}:${t.text.length}`).join(",");
+    void textKey; // Make it a dependency to trigger height remeasurement
+  }
 </script>
 
 <svelte:window
