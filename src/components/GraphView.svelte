@@ -7,6 +7,7 @@
   let containerElement;
   let cardPositions = new Map();
   let isDrawingArrow = false;
+  let selectedEdge = null; // [fromId, toId] or null
 
   $: todoList = $todos;
   $: dagInstance = $dag;
@@ -140,6 +141,24 @@
     }
   }
 
+  function handleEdgeSelect(edge) {
+    selectedEdge = edge;
+  }
+
+  function handleEdgeDelete() {
+    if (selectedEdge) {
+      dagActions.removeDependency(selectedEdge[0], selectedEdge[1]);
+      selectedEdge = null;
+    }
+  }
+
+  function handleKeyDown(e) {
+    if ((e.key === 'Backspace' || e.key === 'Delete') && selectedEdge) {
+      e.preventDefault();
+      handleEdgeDelete();
+    }
+  }
+
   function getArrowPath(fromX, fromY, toX, toY) {
     const midY = (fromY + toY) / 2;
     return `M ${fromX} ${fromY} L ${fromX} ${midY} L ${toX} ${midY} L ${toX} ${toY}`;
@@ -171,14 +190,16 @@
   }
 </script>
 
-<svelte:window on:mousemove={handleMouseMove} on:mouseup={handleMouseUp} />
+<svelte:window on:mousemove={handleMouseMove} on:mouseup={handleMouseUp} on:keydown={handleKeyDown} />
 
-<div class="graph-view" bind:this={containerElement} role="application">
+<div class="graph-view" bind:this={containerElement} on:click={() => selectedEdge = null} role="application">
   <svg class="graph-svg" bind:this={svgElement}>
     <!-- Render all dependency arrows -->
     {#each edges as [fromId, toId]}
       {@const fromPos = layout.get(fromId) || cardPositions.get(fromId)}
       {@const toPos = layout.get(toId) || cardPositions.get(toId)}
+      {@const isSelected = selectedEdge && selectedEdge[0] === fromId && selectedEdge[1] === toId}
+      {@const isHovered = hoveredEdge && hoveredEdge[0] === fromId && hoveredEdge[1] === toId}
       {#if fromPos && toPos}
         {@const fromX = fromPos.x + (fromPos.width || 0) / 2}
         {@const fromY = (fromPos.bottom || fromPos.y + (fromPos.height || 0))}
@@ -186,10 +207,24 @@
         {@const toY = toPos.top || toPos.y}
         <path
           d={getArrowPath(fromX, fromY, toX, toY)}
-          stroke="#4a90e2"
-          stroke-width="2"
+          stroke={isSelected ? "#ff6b6b" : "#4a90e2"}
+          stroke-width={isSelected ? "3" : "2"}
           fill="none"
-          marker-end="url(#arrowhead)"
+          opacity={isSelected && isHovered ? "1" : isSelected ? "0.8" : "1"}
+          marker-end={isSelected ? "url(#arrowhead-selected)" : "url(#arrowhead)"}
+          style="cursor: pointer;"
+          on:click={() => {
+            if (isSelected) {
+              // Deselect if already selected
+              handleEdgeSelect(null);
+            } else {
+              // Select if not selected
+              handleEdgeSelect([fromId, toId]);
+            }
+          }}
+          on:mouseenter={() => hoveredEdge = [fromId, toId]}
+          on:mouseleave={() => hoveredEdge = null}
+          on:mousedown|stopPropagation
         />
       {/if}
     {/each}
@@ -221,6 +256,16 @@
         orient="auto"
       >
         <polygon points="0 0, 10 3, 0 6" fill="#4a90e2" />
+      </marker>
+      <marker
+        id="arrowhead-selected"
+        markerWidth="10"
+        markerHeight="10"
+        refX="9"
+        refY="3"
+        orient="auto"
+      >
+        <polygon points="0 0, 10 3, 0 6" fill="#ff6b6b" />
       </marker>
     </defs>
   </svg>
