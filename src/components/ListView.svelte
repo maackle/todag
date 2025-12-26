@@ -12,19 +12,46 @@
     let selectedEdge = null; // [fromId, toId] or null
 
     // Make this reactive to both todos and dag changes
+    // The sorted order should respect the current list order when possible
+    // Only reorder when necessary to enforce DAG constraints (all arrows point down)
     $: sortedTodos = (() => {
         const todoList = $todos;
         const dagInstance = $dag;
+        const edges = dagInstance.getAllEdges();
+        
+        // If there are no dependencies, just return todos in their current order
+        if (edges.length === 0) {
+            return [...todoList];
+        }
+        
+        // Check if current order violates any dependencies
+        const currentOrder = todoList.map(t => t.id);
+        let needsReorder = false;
+        
+        for (const [fromId, toId] of edges) {
+            const fromIndex = currentOrder.indexOf(fromId);
+            const toIndex = currentOrder.indexOf(toId);
+            // If arrow points upward (from lower to upper), we need to reorder
+            if (fromIndex > toIndex) {
+                needsReorder = true;
+                break;
+            }
+        }
+        
+        // If current order is valid, keep it
+        if (!needsReorder) {
+            return [...todoList];
+        }
+        
+        // Otherwise, use topological sort to enforce DAG constraints
         const sortedIds = dagInstance.topologicalSort();
-
-        // Create a map for quick lookup
         const todoMap = new Map(todoList.map((t) => [t.id, t]));
-
-        // Return todos in topological order
-        return sortedIds
+        const sorted = sortedIds
             .map((id) => todoMap.get(id))
-            .filter(Boolean)
-            .concat(todoList.filter((t) => !dagInstance.nodes.has(t.id)));
+            .filter(Boolean);
+        const unconnected = todoList.filter((t) => !dagInstance.nodes.has(t.id));
+        
+        return [...sorted, ...unconnected];
     })();
 
     $: edges = $dag.getAllEdges();
@@ -49,8 +76,9 @@
         e.preventDefault();
         if (!draggedTodoId) return;
 
-        const currentOrder = sortedTodos.map((t) => t.id);
-        const draggedIndex = currentOrder.indexOf(draggedTodoId);
+        // dropIndex is relative to sortedTodos (the displayed order)
+        const sortedOrder = sortedTodos.map((t) => t.id);
+        const draggedIndex = sortedOrder.indexOf(draggedTodoId);
 
         if (draggedIndex === -1 || draggedIndex === dropIndex) {
             dragOverIndex = null;
@@ -58,30 +86,25 @@
             return;
         }
 
-        // Check if the move is valid
-        if ($dag.canMoveTo(draggedTodoId, dropIndex, currentOrder)) {
-            // Get the target position in the sorted order
-            const targetId = sortedTodos[dropIndex]?.id;
-            if (!targetId) {
-                dragOverIndex = null;
-                draggedTodoId = null;
-                return;
-            }
-
-            // Reorder based on the sorted order, then update todos to match
+        // Check if the move is valid according to DAG constraints
+        if ($dag.canMoveTo(draggedTodoId, dropIndex, sortedOrder)) {
+            // Reorder based on the sorted order (which is what's displayed)
             const newSortedOrder = [...sortedTodos];
             const [draggedItem] = newSortedOrder.splice(draggedIndex, 1);
             newSortedOrder.splice(dropIndex, 0, draggedItem);
-
+            
             // Update todos to match the new sorted order
+            // This preserves the new order while respecting DAG constraints
             todos.update((items) => {
-                // Create a map for quick lookup
                 const itemMap = new Map(items.map((t) => [t.id, t]));
-                // Return items in the new sorted order
-                return newSortedOrder
+                const reordered = newSortedOrder
                     .map((t) => itemMap.get(t.id))
                     .filter(Boolean);
+                return reordered;
             });
+        } else {
+            // Move is invalid - provide visual feedback
+            console.log('Cannot move: would violate DAG constraints');
         }
 
         dragOverIndex = null;
@@ -117,10 +140,27 @@
             arrowDrawing.targetId &&
             arrowDrawing.fromId !== arrowDrawing.targetId
         ) {
-            dagActions.addDependency(
-                arrowDrawing.fromId,
-                arrowDrawing.targetId,
-            );
+            const fromId = arrowDrawing.fromId;
+            const toId = arrowDrawing.targetId;
+            
+            // Check if adding this dependency would require reordering
+            const currentTodos = $todos;
+            const fromIndex = currentTodos.findIndex(t => t.id === fromId);
+            const toIndex = currentTodos.findIndex(t => t.id === toId);
+            
+            // If arrow points upward (from lower to upper), we need to reorder
+            // The source should be directly above the target
+            if (fromIndex > toIndex) {
+                // Arrow points upward - reorder so fromId is directly above toId
+                const newTodos = [...currentTodos];
+                const [fromItem] = newTodos.splice(fromIndex, 1);
+                // Insert directly before toId (toId is at toIndex, so insert at toIndex)
+                newTodos.splice(toIndex, 0, fromItem);
+                todos.update(() => newTodos);
+            }
+            
+            // Add the dependency (this will be validated for cycles)
+            dagActions.addDependency(fromId, toId);
         }
         arrowDrawing = null;
         isDrawingArrow = false;
@@ -237,23 +277,23 @@
             <div
                 class="todo-wrapper"
                 class:drag-over={dragOverIndex === index}
-                draggable={!isDrawingArrow}
+                draggable="true"
                 data-todo-id={todo.id}
                 role="listitem"
-                on:dragstart={(e) => {
-                    if (!isDrawingArrow) {
-                        handleDragStart(e, todo.id);
-                    } else {
+                on:dragstart|stopPropagation={(e) => {
+                    if (isDrawingArrow) {
                         e.preventDefault();
+                        return;
                     }
+                    handleDragStart(e, todo.id);
                 }}
-                on:dragover={(e) => {
+                on:dragover|stopPropagation={(e) => {
                     if (!isDrawingArrow) {
                         handleDragOver(e, index);
                     }
                 }}
                 on:dragleave={handleDragLeave}
-                on:drop={(e) => {
+                on:drop|stopPropagation={(e) => {
                     if (!isDrawingArrow) {
                         handleDrop(e, index);
                     }

@@ -46,6 +46,7 @@
     class:drag-target={isDragTarget}
     on:mouseenter={handleMouseEnter}
     on:mouseleave={handleMouseLeave}
+    style="pointer-events: auto;"
 >
     <div
         class="arrow-zone"
