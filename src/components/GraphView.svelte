@@ -1,6 +1,8 @@
 <script>
-  import { todos, dag, todoActions, dagActions } from '../lib/store.js';
-  import TodoCard from './TodoCard.svelte';
+  import { onMount } from "svelte";
+  import dagre from "dagre";
+  import { todos, dag, todoActions, dagActions } from "../lib/store.js";
+  import TodoCard from "./TodoCard.svelte";
 
   let arrowDrawing = null;
   let svgElement;
@@ -9,96 +11,132 @@
   let isDrawingArrow = false;
   let selectedEdge = null; // [fromId, toId] or null
   let hoveredEdge = null; // [fromId, toId] or null
+  let graphLayout = new Map(); // nodeId -> { x, y, width, height }
+  let edgePaths = new Map(); // [fromId, toId] -> path string
 
   $: todoList = $todos;
   $: dagInstance = $dag;
   $: edges = dagInstance ? dagInstance.getAllEdges() : [];
-  
+
+  // Calculate layout using dagre
   function calculateLayout(dagInst, todos) {
-    // Simple layered layout algorithm
-    if (!dagInst || !todos) return new Map();
-    const nodes = Array.from(dagInst.nodes || []);
-    if (nodes.length === 0) return new Map();
-
-    // Calculate layers using BFS
-    const layers = new Map();
-    const inDegree = new Map();
-    
-    // Initialize in-degrees
-    for (const nodeId of nodes) {
-      inDegree.set(nodeId, dagInst.getDependencies(nodeId).size);
+    if (!dagInst || !todos || todos.length === 0) {
+      return { positions: new Map(), edgePaths: new Map() };
     }
 
-    // Find nodes with no dependencies (layer 0)
-    const queue = [];
-    for (const nodeId of nodes) {
-      if (inDegree.get(nodeId) === 0) {
-        queue.push({ nodeId, layer: 0 });
-        layers.set(nodeId, 0);
-      }
-    }
+    // Create a new dagre graph
+    const g = new dagre.graphlib.Graph();
+    g.setDefaultEdgeLabel(() => ({}));
+    g.setGraph({
+      rankdir: "TB", // Top to bottom
+      nodesep: 50, // Horizontal spacing between nodes
+      ranksep: 100, // Vertical spacing between ranks
+      marginx: 50,
+      marginy: 50,
+    });
 
-    // BFS to assign layers
-    while (queue.length > 0) {
-      const { nodeId, layer } = queue.shift();
-      const dependents = dagInst.getDependents(nodeId);
-      
-      for (const dependent of dependents) {
-        const currentLayer = layers.get(dependent) || -1;
-        const newLayer = layer + 1;
-        if (newLayer > currentLayer) {
-          layers.set(dependent, newLayer);
-          queue.push({ nodeId: dependent, layer: newLayer });
-        }
-      }
-    }
-
-    // Assign positions within each layer
-    const layerGroups = new Map();
-    for (const [nodeId, layer] of layers.entries()) {
-      if (!layerGroups.has(layer)) {
-        layerGroups.set(layer, []);
-      }
-      layerGroups.get(layer).push(nodeId);
-    }
-
-    const positions = new Map();
+    // Add nodes to the graph
     const cardWidth = 250;
     const cardHeight = 80;
-    const horizontalSpacing = 20;
-    const verticalSpacing = 120;
-    const startX = 50;
-    const startY = 50;
 
-    for (const [layer, nodeIds] of layerGroups.entries()) {
-      const layerWidth = nodeIds.length * (cardWidth + horizontalSpacing) - horizontalSpacing;
-      const layerStartX = startX + (800 - layerWidth) / 2; // Center the layer
-
-      nodeIds.forEach((nodeId, index) => {
-        positions.set(nodeId, {
-          x: layerStartX + index * (cardWidth + horizontalSpacing),
-          y: startY + layer * verticalSpacing,
-          width: cardWidth,
-          height: cardHeight,
-        });
-      });
-    }
-
-    // Position nodes not in the DAG
-    const unconnectedNodes = todos.filter(t => !dagInst.nodes.has(t.id));
-    unconnectedNodes.forEach((todo, index) => {
-      positions.set(todo.id, {
-        x: startX + index * (cardWidth + horizontalSpacing),
-        y: startY + (layerGroups.size || 0) * verticalSpacing,
+    todos.forEach((todo) => {
+      g.setNode(todo.id, {
         width: cardWidth,
         height: cardHeight,
+        label: todo.id, // dagre needs a label
       });
     });
 
-    return positions;
+    // Add edges to the graph
+    const dagEdges = dagInst.getAllEdges();
+    dagEdges.forEach(([fromId, toId]) => {
+      g.setEdge(fromId, toId);
+    });
+
+    // Run dagre layout
+    dagre.layout(g);
+
+    // Extract positions from dagre
+    const positions = new Map();
+    g.nodes().forEach((nodeId) => {
+      const node = g.node(nodeId);
+      positions.set(nodeId, {
+        x: node.x - node.width / 2, // dagre gives center x, we need top-left
+        y: node.y - node.height / 2, // dagre gives center y, we need top-left
+        width: node.width,
+        height: node.height,
+        centerX: node.x,
+        centerY: node.y,
+      });
+    });
+
+    // Extract edge paths from dagre
+    const paths = new Map();
+    g.edges().forEach((edge) => {
+      const edgeData = g.edge(edge);
+      if (edgeData && edgeData.points && edgeData.points.length > 0) {
+        // Use dagre's calculated edge points for smooth curves
+        let path = `M ${edgeData.points[0].x} ${edgeData.points[0].y}`;
+        for (let i = 1; i < edgeData.points.length; i++) {
+          path += ` L ${edgeData.points[i].x} ${edgeData.points[i].y}`;
+        }
+        paths.set([edge.v, edge.w].join("->"), path);
+      } else {
+        // Fallback to straight line
+        const fromPos = positions.get(edge.v);
+        const toPos = positions.get(edge.w);
+        if (fromPos && toPos) {
+          const fromX = fromPos.centerX || fromPos.x + fromPos.width / 2;
+          const fromY = fromPos.y + fromPos.height;
+          const toX = toPos.centerX || toPos.x + toPos.width / 2;
+          const toY = toPos.y;
+          paths.set(
+            [edge.v, edge.w].join("->"),
+            `M ${fromX} ${fromY} L ${toX} ${toY}`,
+          );
+        }
+      }
+    });
+
+    return { positions, edgePaths: paths };
   }
 
-  $: layout = (dagInstance && todoList) ? calculateLayout(dagInstance, todoList) : new Map();
+  // Get edge path from stored paths
+  function getEdgePath(fromId, toId) {
+    const key = [fromId, toId].join("->");
+    const path = edgePaths.get(key);
+    if (path) return path;
+
+    // Fallback to simple path
+    const fromPos = graphLayout.get(fromId);
+    const toPos = graphLayout.get(toId);
+    if (!fromPos || !toPos) return "";
+
+    const fromX = fromPos.centerX || fromPos.x + fromPos.width / 2;
+    const fromY = fromPos.y + fromPos.height;
+    const toX = toPos.centerX || toPos.x + toPos.width / 2;
+    const toY = toPos.y;
+    return `M ${fromX} ${fromY} L ${toX} ${toY}`;
+  }
+
+  $: if (dagInstance && todoList) {
+    const result = calculateLayout(dagInstance, todoList);
+    graphLayout = result.positions;
+    edgePaths = result.edgePaths;
+    // Update SVG size based on layout
+    if (graphLayout.size > 0) {
+      const maxX = Math.max(
+        ...Array.from(graphLayout.values()).map((p) => p.x + p.width),
+      );
+      const maxY = Math.max(
+        ...Array.from(graphLayout.values()).map((p) => p.y + p.height),
+      );
+      if (svgElement) {
+        svgElement.setAttribute("width", Math.max(800, maxX + 100));
+        svgElement.setAttribute("height", Math.max(600, maxY + 100));
+      }
+    }
+  }
 
   function handleArrowStart(e) {
     if (!containerElement) return;
@@ -121,7 +159,11 @@
   }
 
   function handleArrowEnd() {
-    if (arrowDrawing && arrowDrawing.targetId && arrowDrawing.fromId !== arrowDrawing.targetId) {
+    if (
+      arrowDrawing &&
+      arrowDrawing.targetId &&
+      arrowDrawing.fromId !== arrowDrawing.targetId
+    ) {
       dagActions.addDependency(arrowDrawing.fromId, arrowDrawing.targetId);
     }
     arrowDrawing = null;
@@ -154,77 +196,69 @@
   }
 
   function handleKeyDown(e) {
-    if ((e.key === 'Backspace' || e.key === 'Delete') && selectedEdge) {
+    if ((e.key === "Backspace" || e.key === "Delete") && selectedEdge) {
       e.preventDefault();
       handleEdgeDelete();
     }
   }
 
-  function getArrowPath(fromX, fromY, toX, toY) {
+  function getSimpleArrowPath(fromX, fromY, toX, toY) {
     const midY = (fromY + toY) / 2;
     return `M ${fromX} ${fromY} L ${fromX} ${midY} L ${toX} ${midY} L ${toX} ${toY}`;
   }
 
-  function updateCardPositions() {
-    if (!containerElement) return;
-    const newPositions = new Map();
-    todoList.forEach(todo => {
-      const element = containerElement.querySelector(`[data-todo-id="${todo.id}"]`);
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        const containerRect = containerElement.getBoundingClientRect();
-        newPositions.set(todo.id, {
-          left: rect.left - containerRect.left,
-          top: rect.top - containerRect.top,
-          right: rect.right - containerRect.left,
-          bottom: rect.bottom - containerRect.top,
-          width: rect.width,
-          height: rect.height,
-        });
-      }
-    });
-    cardPositions = newPositions;
-  }
-
-  $: if (todoList.length > 0 || layout.size > 0) {
-    setTimeout(updateCardPositions, 0);
-  }
+  onMount(() => {
+    // Initial layout calculation
+    if (dagInstance && todoList) {
+      const result = calculateLayout(dagInstance, todoList);
+      graphLayout = result.positions;
+      edgePaths = result.edgePaths;
+    }
+  });
 </script>
 
-<svelte:window on:mousemove={handleMouseMove} on:mouseup={handleMouseUp} on:keydown={handleKeyDown} />
+<svelte:window
+  on:mousemove={handleMouseMove}
+  on:mouseup={handleMouseUp}
+  on:keydown={handleKeyDown}
+/>
 
-<div class="graph-view" bind:this={containerElement} on:click={() => selectedEdge = null} role="application">
+<div
+  class="graph-view"
+  bind:this={containerElement}
+  on:click={() => (selectedEdge = null)}
+  role="application"
+>
   <svg class="graph-svg" bind:this={svgElement}>
     <!-- Render all dependency arrows -->
     {#each edges as [fromId, toId]}
-      {@const fromPos = layout.get(fromId) || cardPositions.get(fromId)}
-      {@const toPos = layout.get(toId) || cardPositions.get(toId)}
-      {@const isSelected = selectedEdge && selectedEdge[0] === fromId && selectedEdge[1] === toId}
-      {@const isHovered = hoveredEdge && hoveredEdge[0] === fromId && hoveredEdge[1] === toId}
+      {@const fromPos = graphLayout.get(fromId)}
+      {@const toPos = graphLayout.get(toId)}
+      {@const isSelected =
+        selectedEdge && selectedEdge[0] === fromId && selectedEdge[1] === toId}
+      {@const isHovered =
+        hoveredEdge && hoveredEdge[0] === fromId && hoveredEdge[1] === toId}
       {#if fromPos && toPos}
-        {@const fromX = fromPos.x + (fromPos.width || 0) / 2}
-        {@const fromY = (fromPos.bottom || fromPos.y + (fromPos.height || 0))}
-        {@const toX = toPos.x + (toPos.width || 0) / 2}
-        {@const toY = toPos.top || toPos.y}
+        {@const path = getEdgePath(fromId, toId)}
         <path
-          d={getArrowPath(fromX, fromY, toX, toY)}
+          d={path}
           stroke={isSelected ? "#ff6b6b" : "#4a90e2"}
-          stroke-width={isSelected ? "3" : "2"}
+          stroke-width="12"
           fill="none"
-          opacity={isSelected && isHovered ? "1" : isSelected ? "0.8" : "1"}
-          marker-end={isSelected ? "url(#arrowhead-selected)" : "url(#arrowhead)"}
-          style="cursor: pointer;"
+          opacity={isSelected && isHovered ? "1" : isSelected ? "0.8" : "0.7"}
+          marker-end={isSelected
+            ? "url(#arrowhead-selected)"
+            : "url(#arrowhead)"}
+          style="cursor: pointer; pointer-events: stroke;"
           on:click={() => {
             if (isSelected) {
-              // Deselect if already selected
               handleEdgeSelect(null);
             } else {
-              // Select if not selected
               handleEdgeSelect([fromId, toId]);
             }
           }}
-          on:mouseenter={() => hoveredEdge = [fromId, toId]}
-          on:mouseleave={() => hoveredEdge = null}
+          on:mouseenter={() => (hoveredEdge = [fromId, toId])}
+          on:mouseleave={() => (hoveredEdge = null)}
           on:mousedown|stopPropagation
         />
       {/if}
@@ -237,60 +271,65 @@
       {@const endX = arrowDrawing.currentX}
       {@const endY = arrowDrawing.currentY}
       <path
-        d={getArrowPath(startX, startY, endX, endY)}
+        d={getSimpleArrowPath(startX, startY, endX, endY)}
         stroke="#4a90e2"
         stroke-width="2"
         stroke-dasharray="5,5"
         fill="none"
         opacity="0.7"
+        style="pointer-events: none;"
       />
     {/if}
 
-    <!-- Arrow head marker definition -->
+    <!-- Arrow head marker definition 
     <defs>
       <marker
         id="arrowhead"
-        markerWidth="10"
-        markerHeight="10"
-        refX="9"
-        refY="3"
+        markerWidth="6"
+        markerHeight="6"
+        refX="5"
+        refY="1.5"
         orient="auto"
       >
-        <polygon points="0 0, 10 3, 0 6" fill="#4a90e2" />
+        <polygon points="0 0, 6 1.5, 0 3" fill="#4a90e2" opacity="0.7" />
       </marker>
       <marker
         id="arrowhead-selected"
-        markerWidth="10"
-        markerHeight="10"
-        refX="9"
-        refY="3"
+        markerWidth="6"
+        markerHeight="6"
+        refX="5"
+        refY="1.5"
         orient="auto"
       >
-        <polygon points="0 0, 10 3, 0 6" fill="#ff6b6b" />
+        <polygon points="0 0, 6 1.5, 0 3" fill="#ff6b6b" opacity="0.8" />
       </marker>
     </defs>
+        -->
   </svg>
 
   <div class="cards-container">
     {#each todoList as todo (todo.id)}
-      {@const pos = layout.get(todo.id)}
+      {@const pos = graphLayout.get(todo.id)}
       {#if pos}
         <div
           class="card-wrapper"
           data-todo-id={todo.id}
           style="left: {pos.x}px; top: {pos.y}px; width: {pos.width}px;"
         >
-          <TodoCard
-            {todo}
-            {isDrawingArrow}
-            dependencies={dagInstance.getDependencies(todo.id)}
-            dependents={dagInstance.getDependents(todo.id)}
-            on:arrowStart={handleArrowStart}
-            on:arrowTarget={handleArrowTarget}
-            on:toggle={({ detail }) => todoActions.toggleComplete(detail.id)}
-            on:update={({ detail }) => todoActions.update(detail.id, { text: detail.text })}
-            on:delete={({ detail }) => todoActions.remove(detail.id)}
-          />
+          <div class="card-inner">
+            <TodoCard
+              {todo}
+              {isDrawingArrow}
+              dependencies={dagInstance.getDependencies(todo.id)}
+              dependents={dagInstance.getDependents(todo.id)}
+              on:arrowStart={handleArrowStart}
+              on:arrowTarget={handleArrowTarget}
+              on:toggle={({ detail }) => todoActions.toggleComplete(detail.id)}
+              on:update={({ detail }) =>
+                todoActions.update(detail.id, { text: detail.text })}
+              on:delete={({ detail }) => todoActions.remove(detail.id)}
+            />
+          </div>
         </div>
       {/if}
     {/each}
@@ -312,18 +351,50 @@
     left: 0;
     width: 100%;
     height: 100%;
+    z-index: 1;
     pointer-events: none;
-    z-index: 0;
+  }
+
+  .graph-svg path {
+    pointer-events: stroke;
   }
 
   .cards-container {
     position: relative;
-    z-index: 1;
+    z-index: 2;
     min-height: 100%;
+    pointer-events: none;
   }
 
   .card-wrapper {
     position: absolute;
+    pointer-events: auto;
+  }
+
+  .card-inner {
+    width: 100%;
+    box-sizing: border-box;
+    overflow: visible;
+  }
+
+  .card-inner :global(.todo-card) {
+    margin-bottom: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: visible;
+  }
+
+  .card-inner :global(.card-content) {
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  .card-inner :global(.todo-text) {
+    min-width: 0;
+    flex-shrink: 1;
+  }
+
+  .card-inner :global(.delete-btn) {
+    flex-shrink: 0;
   }
 </style>
-
