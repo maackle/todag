@@ -8,6 +8,7 @@
   let cardPositions = new Map();
   let isDrawingArrow = false;
   let selectedEdge = null; // [fromId, toId] or null
+  let hoveredEdge = null; // [fromId, toId] or null
 
   $: todoList = $todos;
   $: dagInstance = $dag;

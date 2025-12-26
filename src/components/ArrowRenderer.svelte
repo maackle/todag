@@ -57,10 +57,11 @@
     }
 
     function getArrowPath(fromX, fromY, toX, toY) {
-        const pow = 0.8;
+        const pow = 0.5;
+        const scale = 20;
         // Create a smooth bezier curve that extends 16px to the left of the cards
-        const vFactor = Math.pow(Math.abs(fromY - toY) / 100, pow);
-        const arcLeft = Math.min(fromX, toX) - 64 * vFactor; // 32px to the left of the leftmost card
+        const vFactor = Math.pow(Math.abs(fromY - toY) * scale, pow);
+        const arcLeft = Math.min(fromX, toX) - vFactor; // 32px to the left of the leftmost card
         const midY = (fromY + toY) / 2;
 
         // Use a quadratic bezier curve (Q) with control point at the arc position

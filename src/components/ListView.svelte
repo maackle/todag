@@ -14,6 +14,7 @@
     // Make this reactive to both todos and dag changes
     // The sorted order should respect the current list order when possible
     // Only reorder when necessary to enforce DAG constraints (all arrows point down)
+    // IMPORTANT: When deleting arrows, we remove constraints, so current order remains valid
     $: sortedTodos = (() => {
         const todoList = $todos;
         const dagInstance = $dag;
@@ -25,6 +26,8 @@
         }
         
         // Check if current order violates any dependencies
+        // When deleting an arrow, we remove a constraint, so if the order was valid before,
+        // it will still be valid after (or even more valid)
         const currentOrder = todoList.map(t => t.id);
         let needsReorder = false;
         
@@ -38,7 +41,8 @@
             }
         }
         
-        // If current order is valid, keep it
+        // If current order is valid (doesn't violate any constraints), keep it
+        // This preserves order when deleting arrows (removing constraints)
         if (!needsReorder) {
             return [...todoList];
         }
