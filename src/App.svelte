@@ -17,6 +17,24 @@
             handleAddTodo();
         }
     }
+
+    function handleClearCompleted() {
+        const completedCount = $todos.filter(t => t.completed).length;
+        if (completedCount === 0) return;
+        
+        if (confirm(`Are you sure you want to delete ${completedCount} completed item${completedCount > 1 ? 's' : ''}?`)) {
+            todoActions.clearCompleted();
+        }
+    }
+
+    function handleDeleteAll() {
+        const totalCount = $todos.length;
+        if (totalCount === 0) return;
+        
+        if (confirm(`Are you sure you want to delete all ${totalCount} item${totalCount > 1 ? 's' : ''}? This cannot be undone.`)) {
+            todoActions.deleteAll();
+        }
+    }
 </script>
 
 <div class="app">
@@ -50,6 +68,23 @@
                 on:click={() => viewMode.set("graph")}
             >
                 Graph View
+            </button>
+        </div>
+
+        <div class="action-buttons">
+            <button
+                class="action-btn clear-btn"
+                on:click={handleClearCompleted}
+                disabled={$todos.filter(t => t.completed).length === 0}
+            >
+                Clear Completed
+            </button>
+            <button
+                class="action-btn delete-btn"
+                on:click={handleDeleteAll}
+                disabled={$todos.length === 0}
+            >
+                Delete All
             </button>
         </div>
     </div>
@@ -174,6 +209,44 @@
     .toggle-btn.active {
         background: #667eea;
         color: white;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .action-btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .action-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .clear-btn {
+        background: #f59e0b;
+        color: white;
+    }
+
+    .clear-btn:hover:not(:disabled) {
+        background: #d97706;
+    }
+
+    .delete-btn {
+        background: #ef4444;
+        color: white;
+    }
+
+    .delete-btn:hover:not(:disabled) {
+        background: #dc2626;
     }
 
     main {

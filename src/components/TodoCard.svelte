@@ -120,15 +120,21 @@
                 placeholder="Enter todo..."
             />
         {/if}
-        {#if isHovered}
+        {#if isHovered && (dependencyCount > 0 || dependentCount > 0)}
             <div class="dependency-overlay">
-                <div class="overlay-section">
-                    <span class="overlay-label">blocked by:</span>
-                    <span class="overlay-count">{dependencyCount}</span>
+                <div
+                    class="overlay-section"
+                    class:hidden={dependencyCount === 0}
+                >
+                    <span class="overlay-label">blocked by</span>
+                    <span class="overlay-count-blocked">{dependencyCount}</span>
                 </div>
-                <div class="overlay-section">
-                    <span class="overlay-label">unblocks:</span>
-                    <span class="overlay-count">{dependentCount}</span>
+                <div
+                    class="overlay-section"
+                    class:hidden={dependentCount === 0}
+                >
+                    <span class="overlay-label">unblocks</span>
+                    <span class="overlay-count-unblocks">{dependentCount}</span>
                 </div>
             </div>
         {/if}
@@ -250,7 +256,7 @@
         align-items: flex-end;
         gap: 4px;
         padding: 4px 8px;
-        background: rgba(26, 42, 58, 0.95);
+        background: rgba(0, 0, 0, 0.15);
         border-radius: 4px;
         font-size: 12px;
         color: #e0e0e0;
@@ -262,13 +268,22 @@
         display: flex;
         align-items: center;
         gap: 4px;
+        min-height: 1.2em;
+    }
+
+    .overlay-section.hidden {
+        visibility: hidden;
     }
 
     .overlay-label {
         color: #888;
     }
 
-    .overlay-count {
+    .overlay-count-blocked {
+        color: #d54ae2;
+        font-weight: 600;
+    }
+    .overlay-count-unblocks {
         color: #4a90e2;
         font-weight: 600;
     }
