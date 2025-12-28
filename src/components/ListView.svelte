@@ -308,10 +308,13 @@
                     isDragging={draggedTodoId === todo.id}
                     isDragTarget={dragOverIndex === index}
                     {isDrawingArrow}
+                    isHovered={hoveredCardId === todo.id}
                     dependencies={$dag.getDependencies(todo.id)}
                     dependents={$dag.getDependents(todo.id)}
                     on:arrowStart={handleArrowStart}
                     on:arrowTarget={handleArrowTarget}
+                    on:mouseenter={() => hoveredCardId = todo.id}
+                    on:mouseleave={() => hoveredCardId = null}
                     on:toggle={({ detail }) =>
                         todoActions.toggleComplete(detail.id)}
                     on:update={({ detail }) =>
@@ -328,6 +331,7 @@
         {arrowDrawing}
         {cardPositions}
         {selectedEdge}
+        hoveredCardId={hoveredCardId}
         onEdgeSelect={handleEdgeSelect}
         onEdgeDelete={handleEdgeDelete}
     />

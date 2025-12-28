@@ -11,17 +11,18 @@
 
     export let isDrawingArrow = false;
     export let useTextarea = false; // Use textarea instead of input for multi-line text
-    
+    export let isHovered = false; // Whether this card is being hovered
+
     let textareaElement;
-    
+
     // Auto-resize textarea to fit content
     function autoResizeTextarea() {
         if (textareaElement && useTextarea) {
-            textareaElement.style.height = 'auto';
-            textareaElement.style.height = textareaElement.scrollHeight + 'px';
+            textareaElement.style.height = "auto";
+            textareaElement.style.height = textareaElement.scrollHeight + "px";
         }
     }
-    
+
     $: if (todo.text && useTextarea) {
         autoResizeTextarea();
     }
@@ -43,16 +44,21 @@
     }
 
     function handleMouseEnter() {
+        dispatch("mouseenter");
         if (isDrawingArrow) {
             dispatch("arrowTarget", { todoId: todo.id });
         }
     }
 
     function handleMouseLeave() {
+        dispatch("mouseleave");
         if (isDrawingArrow) {
             dispatch("arrowTarget", { todoId: null });
         }
     }
+
+    $: dependencyCount = dependencies.size;
+    $: dependentCount = dependents.size;
 </script>
 
 <div
@@ -114,6 +120,18 @@
                 placeholder="Enter todo..."
             />
         {/if}
+        {#if isHovered}
+            <div class="dependency-overlay">
+                <div class="overlay-section">
+                    <span class="overlay-label">blocked by:</span>
+                    <span class="overlay-count">{dependencyCount}</span>
+                </div>
+                <div class="overlay-section">
+                    <span class="overlay-label">unblocks:</span>
+                    <span class="overlay-count">{dependentCount}</span>
+                </div>
+            </div>
+        {/if}
         <button
             class="delete-btn"
             on:click={() => dispatch("delete", { id: todo.id })}
@@ -131,7 +149,7 @@
         background: #2a2a2a;
         border: 2px solid #444;
         border-radius: 8px;
-        padding: 12px;
+        padding: 0 12px;
         margin-bottom: 8px;
         transition: all 0.2s;
         position: relative;
@@ -185,7 +203,7 @@
         border: none;
         outline: none;
         font-size: 16px;
-        padding: 4px 0;
+        padding: 16px 0;
         background: transparent;
         color: #e0e0e0;
     }
@@ -224,5 +242,34 @@
         width: 20px;
         height: 20px;
         cursor: pointer;
+    }
+
+    .dependency-overlay {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+        padding: 4px 8px;
+        background: rgba(26, 42, 58, 0.95);
+        border-radius: 4px;
+        font-size: 12px;
+        color: #e0e0e0;
+        white-space: nowrap;
+        margin-right: 0px;
+    }
+
+    .overlay-section {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .overlay-label {
+        color: #888;
+    }
+
+    .overlay-count {
+        color: #4a90e2;
+        font-weight: 600;
     }
 </style>

@@ -6,6 +6,7 @@
     export let arrowDrawing = null;
     export let cardPositions = new Map();
     export let selectedEdge = null; // [fromId, toId] or null
+    export let hoveredCardId = null; // Card ID being hovered
     export let onEdgeSelect = null; // callback
     export let onEdgeDelete = null; // callback
 
@@ -85,13 +86,18 @@
                 hoveredEdge &&
                 hoveredEdge[0] === path.fromId &&
                 hoveredEdge[1] === path.toId}
+            {@const isConnectedToHoveredCard =
+                hoveredCardId &&
+                (path.fromId === hoveredCardId || path.toId === hoveredCardId)}
             <g class="arrow-group" class:selected={isSelected}>
                 <path
                     d={getArrowPath(path.fromX, path.fromY, path.toX, path.toY)}
                     stroke={isSelected ? "#ff6b6b" : "#4a90e2"}
                     stroke-width="12"
                     fill="none"
-                    opacity={isHovered || isSelected ? "1" : "0.5"}
+                    opacity={isHovered || isSelected || isConnectedToHoveredCard
+                        ? "1"
+                        : "0.5"}
                     marker-end={isSelected
                         ? "url(#arrowhead-selected)"
                         : "url(#arrowhead)"}
