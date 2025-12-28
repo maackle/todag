@@ -114,26 +114,44 @@
     header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 2rem;
+        padding: 1.5rem 1rem;
         text-align: center;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
 
+    @media (min-width: 768px) {
+        header {
+            padding: 2rem;
+        }
+    }
+
     h1 {
         margin: 0;
-        font-size: 2.5rem;
+        font-size: 1.75rem;
         font-weight: 700;
+    }
+
+    @media (min-width: 768px) {
+        h1 {
+            font-size: 2.5rem;
+        }
     }
 
     .subtitle {
         margin: 0.5rem 0 0 0;
         opacity: 0.9;
-        font-size: 1rem;
+        font-size: 0.875rem;
+    }
+
+    @media (min-width: 768px) {
+        .subtitle {
+            font-size: 1rem;
+        }
     }
 
     .controls {
         background: #2a2a2a;
-        padding: 1.5rem 2rem;
+        padding: 1rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -142,11 +160,23 @@
         gap: 1rem;
     }
 
+    @media (min-width: 768px) {
+        .controls {
+            padding: 1.5rem 2rem;
+        }
+    }
+
     .add-todo {
         display: flex;
         gap: 0.5rem;
         flex: 1;
-        min-width: 300px;
+        min-width: 200px;
+    }
+
+    @media (min-width: 768px) {
+        .add-todo {
+            min-width: 300px;
+        }
     }
 
     .add-todo input {
@@ -214,16 +244,24 @@
     .action-buttons {
         display: flex;
         gap: 0.5rem;
+        flex-wrap: wrap;
     }
 
     .action-btn {
-        padding: 0.75rem 1.5rem;
+        padding: 0.5rem 1rem;
         border: none;
         border-radius: 6px;
-        font-size: 1rem;
+        font-size: 0.875rem;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s;
+    }
+
+    @media (min-width: 768px) {
+        .action-btn {
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+        }
     }
 
     .action-btn:disabled {

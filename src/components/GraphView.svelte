@@ -516,6 +516,14 @@
     min-height: 600px;
     overflow: auto;
     background: #1a1a1a;
+    padding-left: 64px;
+  }
+
+  @media (max-width: 768px) {
+    .graph-view {
+      padding-left: 64px;
+      padding-right: 15px;
+    }
   }
 
   .graph-svg {
@@ -542,9 +550,15 @@
   .card-wrapper {
     position: absolute;
     pointer-events: auto;
-    min-width: 250px;
+    min-width: 200px;
     max-width: 333px;
     width: fit-content;
+  }
+
+  @media (min-width: 768px) {
+    .card-wrapper {
+      min-width: 250px;
+    }
   }
 
   .card-inner {

@@ -155,11 +155,17 @@
         background: #2a2a2a;
         border: 2px solid #444;
         border-radius: 8px;
-        padding: 0 12px;
+        padding: 0 10px;
         margin-bottom: 8px;
         transition: all 0.2s;
         position: relative;
         color: #e0e0e0;
+    }
+
+    @media (min-width: 768px) {
+        .todo-card {
+            padding: 0 12px;
+        }
     }
 
     .todo-card:hover {
@@ -208,10 +214,16 @@
         flex: 1;
         border: none;
         outline: none;
-        font-size: 16px;
+        font-size: 14px;
         padding: 16px 0;
         background: transparent;
         color: #e0e0e0;
+    }
+
+    @media (min-width: 768px) {
+        .todo-text {
+            font-size: 16px;
+        }
     }
 
     .todo-text.completed {

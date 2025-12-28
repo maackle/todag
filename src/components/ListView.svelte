@@ -340,10 +340,18 @@
 <style>
     .list-view {
         position: relative;
-        padding: 20px;
+        padding: 20px 20px 20px 64px;
         max-width: 800px;
         margin: 0 auto;
         background: #1a1a1a;
+        overflow-x: auto;
+    }
+
+    @media (max-width: 768px) {
+        .list-view {
+            padding: 15px 15px 15px 64px;
+            max-width: 100%;
+        }
     }
 
     .todo-list {
