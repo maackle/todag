@@ -12,6 +12,7 @@
     export let isDrawingArrow = false;
     export let useTextarea = false; // Use textarea instead of input for multi-line text
     export let isHovered = false; // Whether this card is being hovered
+    export let onDragStart = null; // Callback for drag start (touch)
 
     let textareaElement;
 
@@ -29,7 +30,7 @@
 
     let arrowZoneHovered = false;
 
-    function handleArrowZoneMouseDown(e) {
+    function handleArrowZoneStart(e) {
         e.stopPropagation();
         e.preventDefault();
         // Start arrow drawing - this prevents drag from starting
@@ -41,6 +42,26 @@
             x: arrowStartX,
             y: arrowStartY,
         });
+    }
+
+    function handleArrowZoneTouchStart(e) {
+        if (e.touches && e.touches.length === 1) {
+            e.stopPropagation();
+            e.preventDefault();
+            handleArrowZoneStart(e);
+        }
+    }
+
+    function handleTouchEnter() {
+        if (isDrawingArrow) {
+            dispatch("arrowTarget", { todoId: todo.id });
+        }
+    }
+
+    function handleTouchLeave() {
+        if (isDrawingArrow) {
+            dispatch("arrowTarget", { todoId: null });
+        }
     }
 
     function handleMouseEnter() {
@@ -74,9 +95,12 @@
         class:hovered={arrowZoneHovered}
         role="button"
         tabindex="0"
-        on:mousedown={handleArrowZoneMouseDown}
+        on:mousedown={handleArrowZoneStart}
+        on:touchstart={handleArrowZoneTouchStart}
         on:mouseenter={() => (arrowZoneHovered = true)}
         on:mouseleave={() => (arrowZoneHovered = false)}
+        on:touchenter={handleTouchEnter}
+        on:touchleave={handleTouchLeave}
         title="Click and drag to create dependency"
     >
         <svg width="16" height="16" viewBox="0 0 16 16">
@@ -87,6 +111,27 @@
                 stroke-width="1.5"
                 fill="none"
             />
+        </svg>
+    </div>
+
+    <div
+        class="drag-handle"
+        on:touchstart={(e) => {
+            if (onDragStart && e.touches && e.touches.length === 1) {
+                e.stopPropagation();
+                e.preventDefault();
+                onDragStart(e);
+            }
+        }}
+        title="Drag to reorder"
+    >
+        <svg width="16" height="16" viewBox="0 0 16 16">
+            <circle cx="4" cy="4" r="1.5" fill="currentColor" />
+            <circle cx="4" cy="8" r="1.5" fill="currentColor" />
+            <circle cx="4" cy="12" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="4" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="8" r="1.5" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
         </svg>
     </div>
 
@@ -185,22 +230,62 @@
 
     .arrow-zone {
         width: 24px;
-        height: 24px;
+        height: 100%;
+        min-height: 60px;
         display: flex;
         align-items: center;
         justify-content: center;
         margin-right: 12px;
         cursor: crosshair;
-        color: #888;
+        color: #4a90e2;
+        background: rgba(74, 144, 226, 0.1);
         border-radius: 4px;
         transition: all 0.2s;
         flex-shrink: 0;
+        touch-action: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
     }
 
     .arrow-zone:hover,
     .arrow-zone.hovered {
-        background: #1a2a3a;
+        background: rgba(74, 144, 226, 0.2);
         color: #4a90e2;
+    }
+
+    .drag-handle {
+        width: 24px;
+        height: 100%;
+        min-height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 12px;
+        cursor: grab;
+        color: #888;
+        border-radius: 4px;
+        transition: all 0.2s;
+        flex-shrink: 0;
+        touch-action: none;
+    }
+
+    .drag-handle:active {
+        cursor: grabbing;
+        background: rgba(74, 144, 226, 0.1);
+        color: #4a90e2;
+    }
+
+    @media (max-width: 768px) {
+        .drag-handle {
+            display: flex;
+        }
+    }
+
+    @media (min-width: 769px) {
+        .drag-handle {
+            display: none;
+        }
     }
 
     .card-content {

@@ -19,18 +19,18 @@
         const todoList = $todos;
         const dagInstance = $dag;
         const edges = dagInstance.getAllEdges();
-        
+
         // If there are no dependencies, just return todos in their current order
         if (edges.length === 0) {
             return [...todoList];
         }
-        
+
         // Check if current order violates any dependencies
         // When deleting an arrow, we remove a constraint, so if the order was valid before,
         // it will still be valid after (or even more valid)
-        const currentOrder = todoList.map(t => t.id);
+        const currentOrder = todoList.map((t) => t.id);
         let needsReorder = false;
-        
+
         for (const [fromId, toId] of edges) {
             const fromIndex = currentOrder.indexOf(fromId);
             const toIndex = currentOrder.indexOf(toId);
@@ -40,30 +40,142 @@
                 break;
             }
         }
-        
+
         // If current order is valid (doesn't violate any constraints), keep it
         // This preserves order when deleting arrows (removing constraints)
         if (!needsReorder) {
             return [...todoList];
         }
-        
+
         // Otherwise, use topological sort to enforce DAG constraints
         const sortedIds = dagInstance.topologicalSort();
         const todoMap = new Map(todoList.map((t) => [t.id, t]));
-        const sorted = sortedIds
-            .map((id) => todoMap.get(id))
-            .filter(Boolean);
-        const unconnected = todoList.filter((t) => !dagInstance.nodes.has(t.id));
-        
+        const sorted = sortedIds.map((id) => todoMap.get(id)).filter(Boolean);
+        const unconnected = todoList.filter(
+            (t) => !dagInstance.nodes.has(t.id),
+        );
+
         return [...sorted, ...unconnected];
     })();
 
     $: edges = $dag.getAllEdges();
 
     function handleDragStart(e, todoId) {
+        if (isDrawingArrow) return;
         draggedTodoId = todoId;
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", todoId);
+        if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", todoId);
+        }
+    }
+
+    function handleTouchStart(e, todoId, index) {
+        if (isDrawingArrow) return;
+        if (e.touches && e.touches.length === 1) {
+            touchDragState = {
+                todoId,
+                startY: e.touches[0].clientY,
+                currentY: e.touches[0].clientY,
+                startIndex: index,
+            };
+            draggedTodoId = todoId;
+        }
+    }
+
+    function handleCardDragStart(e) {
+        // This is called from the drag handle in TodoCard
+        if (isDrawingArrow) return;
+        const todoId =
+            e.currentTarget?.closest("[data-todo-id]")?.dataset?.todoId;
+        if (todoId) {
+            const index = sortedTodos.findIndex((t) => t.id === todoId);
+            if (index !== -1 && e.touches && e.touches.length === 1) {
+                touchDragState = {
+                    todoId,
+                    startY: e.touches[0].clientY,
+                    currentY: e.touches[0].clientY,
+                    startIndex: index,
+                };
+                draggedTodoId = todoId;
+            }
+        }
+    }
+
+    function handleTouchMoveDrag(e) {
+        if (touchDragState && e.touches.length === 1) {
+            touchDragState.currentY = e.touches[0].clientY;
+            const deltaY = touchDragState.currentY - touchDragState.startY;
+
+            // Find the card we're over
+            if (listContainer) {
+                const cards = listContainer.querySelectorAll(".todo-wrapper");
+                let targetIndex = touchDragState.startIndex;
+
+                cards.forEach((card, idx) => {
+                    const rect = card.getBoundingClientRect();
+                    const cardCenterY = rect.top + rect.height / 2;
+                    if (
+                        touchDragState.currentY < cardCenterY &&
+                        idx < touchDragState.startIndex
+                    ) {
+                        targetIndex = idx;
+                    } else if (
+                        touchDragState.currentY > cardCenterY &&
+                        idx > touchDragState.startIndex
+                    ) {
+                        targetIndex = idx + 1;
+                    }
+                });
+
+                if (targetIndex !== dragOverIndex) {
+                    dragOverIndex = targetIndex;
+                }
+            }
+        }
+    }
+
+    function handleTouchEndDrag() {
+        if (touchDragState) {
+            const dropIndex =
+                dragOverIndex !== null
+                    ? dragOverIndex
+                    : touchDragState.startIndex;
+            if (dropIndex !== touchDragState.startIndex) {
+                // Perform the drop
+                const sortedOrder = sortedTodos.map((t) => t.id);
+                const draggedIndex = sortedOrder.indexOf(touchDragState.todoId);
+
+                if (draggedIndex !== -1 && draggedIndex !== dropIndex) {
+                    if (
+                        $dag.canMoveTo(
+                            touchDragState.todoId,
+                            dropIndex,
+                            sortedOrder,
+                        )
+                    ) {
+                        const newSortedOrder = [...sortedTodos];
+                        const [draggedItem] = newSortedOrder.splice(
+                            draggedIndex,
+                            1,
+                        );
+                        newSortedOrder.splice(dropIndex, 0, draggedItem);
+
+                        todos.update((items) => {
+                            const itemMap = new Map(
+                                items.map((t) => [t.id, t]),
+                            );
+                            const reordered = newSortedOrder
+                                .map((t) => itemMap.get(t.id))
+                                .filter(Boolean);
+                            return reordered;
+                        });
+                    }
+                }
+            }
+            touchDragState = null;
+            dragOverIndex = null;
+            draggedTodoId = null;
+        }
     }
 
     function handleDragOver(e, index) {
@@ -96,7 +208,7 @@
             const newSortedOrder = [...sortedTodos];
             const [draggedItem] = newSortedOrder.splice(draggedIndex, 1);
             newSortedOrder.splice(dropIndex, 0, draggedItem);
-            
+
             // Update todos to match the new sorted order
             // This preserves the new order while respecting DAG constraints
             todos.update((items) => {
@@ -108,7 +220,7 @@
             });
         } else {
             // Move is invalid - provide visual feedback
-            console.log('Cannot move: would violate DAG constraints');
+            console.log("Cannot move: would violate DAG constraints");
         }
 
         dragOverIndex = null;
@@ -146,12 +258,12 @@
         ) {
             const fromId = arrowDrawing.fromId;
             const toId = arrowDrawing.targetId;
-            
+
             // Check if adding this dependency would require reordering
             const currentTodos = $todos;
-            const fromIndex = currentTodos.findIndex(t => t.id === fromId);
-            const toIndex = currentTodos.findIndex(t => t.id === toId);
-            
+            const fromIndex = currentTodos.findIndex((t) => t.id === fromId);
+            const toIndex = currentTodos.findIndex((t) => t.id === toId);
+
             // If arrow points upward (from lower to upper), we need to reorder
             // The source should be directly above the target
             if (fromIndex > toIndex) {
@@ -162,7 +274,7 @@
                 newTodos.splice(toIndex, 0, fromItem);
                 todos.update(() => newTodos);
             }
-            
+
             // Add the dependency (this will be validated for cycles)
             dagActions.addDependency(fromId, toId);
         }
@@ -178,9 +290,51 @@
         }
     }
 
+    function handleTouchMove(e) {
+        e.preventDefault(); // Prevent scrolling during touch interactions
+        if (
+            arrowDrawing &&
+            listContainer &&
+            e.touches &&
+            e.touches.length === 1
+        ) {
+            const containerRect = listContainer.getBoundingClientRect();
+            arrowDrawing.currentX = e.touches[0].clientX - containerRect.left;
+            arrowDrawing.currentY = e.touches[0].clientY - containerRect.top;
+
+            // Check which card we're over during arrow drawing
+            const touchX = e.touches[0].clientX;
+            const touchY = e.touches[0].clientY;
+            const elementBelow = document.elementFromPoint(touchX, touchY);
+            const cardElement = elementBelow?.closest("[data-todo-id]");
+            if (cardElement) {
+                const targetId = cardElement.dataset.todoId;
+                if (targetId && arrowDrawing.fromId !== targetId) {
+                    arrowDrawing.targetId = targetId;
+                } else {
+                    arrowDrawing.targetId = null;
+                }
+            } else {
+                arrowDrawing.targetId = null;
+            }
+        }
+        if (touchDragState && e.touches && e.touches.length === 1) {
+            handleTouchMoveDrag(e);
+        }
+    }
+
     function handleMouseUp() {
         if (arrowDrawing) {
             handleArrowEnd();
+        }
+    }
+
+    function handleTouchEnd(e) {
+        if (arrowDrawing) {
+            handleArrowEnd();
+        }
+        if (touchDragState) {
+            handleTouchEndDrag();
         }
     }
 
@@ -266,15 +420,19 @@
 <svelte:window
     on:mousemove={handleMouseMove}
     on:mouseup={handleMouseUp}
+    on:touchmove={handleTouchMove}
+    on:touchend={handleTouchEnd}
     on:keydown={handleKeyDown}
 />
 
 <div
     class="list-view"
     on:mouseup={handleMouseUp}
+    on:touchend={handleTouchEnd}
     on:click={() => (selectedEdge = null)}
     bind:this={listContainer}
     role="application"
+    style="touch-action: pan-y;"
 >
     <div class="todo-list">
         {#each sortedTodos as todo, index (todo.id)}
@@ -311,10 +469,11 @@
                     isHovered={hoveredCardId === todo.id}
                     dependencies={$dag.getDependencies(todo.id)}
                     dependents={$dag.getDependents(todo.id)}
+                    onDragStart={handleCardDragStart}
                     on:arrowStart={handleArrowStart}
                     on:arrowTarget={handleArrowTarget}
-                    on:mouseenter={() => hoveredCardId = todo.id}
-                    on:mouseleave={() => hoveredCardId = null}
+                    on:mouseenter={() => (hoveredCardId = todo.id)}
+                    on:mouseleave={() => (hoveredCardId = null)}
                     on:toggle={({ detail }) =>
                         todoActions.toggleComplete(detail.id)}
                     on:update={({ detail }) =>
@@ -331,7 +490,7 @@
         {arrowDrawing}
         {cardPositions}
         {selectedEdge}
-        hoveredCardId={hoveredCardId}
+        {hoveredCardId}
         onEdgeSelect={handleEdgeSelect}
         onEdgeDelete={handleEdgeDelete}
     />

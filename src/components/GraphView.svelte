@@ -303,7 +303,43 @@
     }
   }
 
+  function handleTouchMove(e) {
+    e.preventDefault(); // Prevent scrolling during touch interactions
+    if (
+      arrowDrawing &&
+      containerElement &&
+      e.touches &&
+      e.touches.length === 1
+    ) {
+      const rect = containerElement.getBoundingClientRect();
+      arrowDrawing.currentX = e.touches[0].clientX - rect.left;
+      arrowDrawing.currentY = e.touches[0].clientY - rect.top;
+
+      // Check which card we're over during arrow drawing
+      const touchX = e.touches[0].clientX;
+      const touchY = e.touches[0].clientY;
+      const elementBelow = document.elementFromPoint(touchX, touchY);
+      const cardElement = elementBelow?.closest("[data-todo-id]");
+      if (cardElement) {
+        const targetId = cardElement.dataset.todoId;
+        if (targetId && arrowDrawing.fromId !== targetId) {
+          arrowDrawing.targetId = targetId;
+        } else {
+          arrowDrawing.targetId = null;
+        }
+      } else {
+        arrowDrawing.targetId = null;
+      }
+    }
+  }
+
   function handleMouseUp() {
+    if (arrowDrawing) {
+      handleArrowEnd();
+    }
+  }
+
+  function handleTouchEnd() {
     if (arrowDrawing) {
       handleArrowEnd();
     }
@@ -399,7 +435,9 @@
   class="graph-view"
   bind:this={containerElement}
   on:click={() => (selectedEdge = null)}
+  on:touchend={handleTouchEnd}
   role="application"
+  style="touch-action: pan-y;"
 >
   <svg class="graph-svg" bind:this={svgElement}>
     <!-- Render all dependency arrows -->
