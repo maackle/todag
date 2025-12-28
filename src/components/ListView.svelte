@@ -10,6 +10,7 @@
     let hoveredCardId = null;
     let isDrawingArrow = false;
     let selectedEdge = null; // [fromId, toId] or null
+    let touchDragState = null; // { todoId, startY, currentY, startIndex }
 
     // Make this reactive to both todos and dag changes
     // The sorted order should respect the current list order when possible
@@ -102,9 +103,8 @@
     }
 
     function handleTouchMoveDrag(e) {
-        if (touchDragState && e.touches.length === 1) {
+        if (touchDragState && e.touches && e.touches.length === 1) {
             touchDragState.currentY = e.touches[0].clientY;
-            const deltaY = touchDragState.currentY - touchDragState.startY;
 
             // Find the card we're over
             if (listContainer) {
@@ -218,9 +218,6 @@
                     .filter(Boolean);
                 return reordered;
             });
-        } else {
-            // Move is invalid - provide visual feedback
-            console.log("Cannot move: would violate DAG constraints");
         }
 
         dragOverIndex = null;

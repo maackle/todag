@@ -13,6 +13,11 @@
     let svgElement;
     let containerElement;
     let hoveredEdge = null; // [fromId, toId] or null
+    let lastTapTime = 0;
+    let lastTapEdge = null;
+    let lastTapWasSelected = false; // Track if the edge was selected when first tap occurred
+    let touchHandled = false; // Track if we've handled a touch event to prevent click
+    const DOUBLE_TAP_DELAY = 300; // ms
 
     $: arrowPaths = calculateArrowPaths(edges, cardPositions);
 
@@ -20,10 +25,6 @@
         const paths = [];
 
         if (!positions || positions.size === 0) {
-            console.log("ArrowRenderer: No card positions available", {
-                edges: edgeList.length,
-                positions: positions?.size || 0,
-            });
             return paths;
         }
 
@@ -102,7 +103,13 @@
                         ? "url(#arrowhead-selected)"
                         : "url(#arrowhead)"}
                     style="cursor: pointer;"
-                    on:click|stopPropagation={() => {
+                    on:click|stopPropagation={(e) => {
+                        // Skip click if we've already handled a touch event
+                        if (touchHandled) {
+                            touchHandled = false;
+                            return;
+                        }
+                        // Handle single click
                         if (isSelected) {
                             // Deselect if already selected
                             onEdgeSelect && onEdgeSelect(null);
@@ -111,6 +118,82 @@
                             onEdgeSelect &&
                                 onEdgeSelect([path.fromId, path.toId]);
                         }
+                    }}
+                    on:dblclick|stopPropagation={() => {
+                        // Double-click: delete if selected, otherwise select
+                        if (isSelected) {
+                            onEdgeDelete &&
+                                onEdgeDelete([path.fromId, path.toId]);
+                        } else {
+                            onEdgeSelect &&
+                                onEdgeSelect([path.fromId, path.toId]);
+                        }
+                    }}
+                    on:touchstart|stopPropagation={(e) => {
+                        // Record touch start time for double-tap detection
+                        const currentTime = Date.now();
+                        const edge = [path.fromId, path.toId];
+                        const edgeKey = `${path.fromId}-${path.toId}`;
+                        const lastEdgeKey = lastTapEdge
+                            ? `${lastTapEdge[0]}-${lastTapEdge[1]}`
+                            : null;
+
+                        // Check if this is a double-tap (same edge, within time limit)
+                        if (
+                            lastTapEdge &&
+                            edgeKey === lastEdgeKey &&
+                            currentTime - lastTapTime < DOUBLE_TAP_DELAY
+                        ) {
+                            // Double-tap detected - handle immediately
+                            // Use the selection state from when the first tap occurred
+                            touchHandled = true;
+                            if (lastTapWasSelected) {
+                                // Delete if it was already selected when first tap occurred
+                                onEdgeDelete && onEdgeDelete(edge);
+                            } else {
+                                // Select if it wasn't selected when first tap occurred
+                                onEdgeSelect && onEdgeSelect(edge);
+                            }
+                            lastTapTime = 0;
+                            lastTapEdge = null;
+                            lastTapWasSelected = false;
+                        } else {
+                            // First tap - record for potential double-tap, including selection state
+                            lastTapTime = currentTime;
+                            lastTapEdge = edge;
+                            lastTapWasSelected = isSelected; // Record if it was selected at first tap
+                        }
+                    }}
+                    on:touchend|stopPropagation={(e) => {
+                        // Handle single tap selection on touchend
+                        // Wait a bit to see if a second tap comes (double-tap detection)
+                        const edge = [path.fromId, path.toId];
+                        const edgeKey = `${path.fromId}-${path.toId}`;
+                        const savedLastTapTime = lastTapTime;
+                        const savedLastTapEdge = lastTapEdge;
+
+                        setTimeout(() => {
+                            // Only handle if no second tap occurred (check if values are still the same)
+                            if (
+                                lastTapTime === savedLastTapTime &&
+                                lastTapEdge &&
+                                savedLastTapEdge &&
+                                lastTapEdge[0] === savedLastTapEdge[0] &&
+                                lastTapEdge[1] === savedLastTapEdge[1]
+                            ) {
+                                // Single tap confirmed - select/deselect
+                                touchHandled = true;
+                                if (isSelected) {
+                                    onEdgeSelect && onEdgeSelect(null);
+                                } else {
+                                    onEdgeSelect && onEdgeSelect(edge);
+                                }
+                                // Clear double-tap tracking
+                                lastTapTime = 0;
+                                lastTapEdge = null;
+                                lastTapWasSelected = false;
+                            }
+                        }, DOUBLE_TAP_DELAY);
                     }}
                     on:mouseenter={() =>
                         (hoveredEdge = [path.fromId, path.toId])}

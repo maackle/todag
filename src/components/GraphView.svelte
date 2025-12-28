@@ -11,6 +11,11 @@
   let isDrawingArrow = false;
   let selectedEdge = null; // [fromId, toId] or null
   let hoveredEdge = null; // [fromId, toId] or null
+  let lastTapTime = 0;
+  let lastTapEdge = null;
+  let lastTapWasSelected = false; // Track if the edge was selected when first tap occurred
+  let touchHandled = false; // Track if we've handled a touch event to prevent click
+  const DOUBLE_TAP_DELAY = 300; // ms
   let graphLayout = new Map(); // nodeId -> { x, y, width, height }
   let edgePaths = new Map(); // [fromId, toId] -> path string
   let actualCardHeights = new Map(); // nodeId -> actual height in pixels
@@ -461,11 +466,81 @@
             : "url(#arrowhead)"}
           style="cursor: pointer; pointer-events: stroke;"
           on:click={() => {
+            // Single click: select or deselect
             if (isSelected) {
               handleEdgeSelect(null);
             } else {
               handleEdgeSelect([fromId, toId]);
             }
+          }}
+          on:dblclick={() => {
+            // Double-click: delete if selected, otherwise select
+            if (isSelected) {
+              handleEdgeDelete();
+            } else {
+              handleEdgeSelect([fromId, toId]);
+            }
+          }}
+          on:touchstart|stopPropagation={(e) => {
+            e.preventDefault(); // Prevent default touch behavior
+            // Record touch start time for double-tap detection
+            const currentTime = Date.now();
+            const edge = [fromId, toId];
+            const edgeKey = `${fromId}-${toId}`;
+            const lastEdgeKey = lastTapEdge ? `${lastTapEdge[0]}-${lastTapEdge[1]}` : null;
+            
+            // Check if this is a double-tap (same edge, within time limit)
+            if (lastTapEdge && edgeKey === lastEdgeKey && (currentTime - lastTapTime) < DOUBLE_TAP_DELAY) {
+              // Double-tap detected - handle immediately
+              // Use the selection state from when the first tap occurred
+              touchHandled = true;
+              if (lastTapWasSelected) {
+                // Delete if it was already selected when first tap occurred
+                handleEdgeDelete();
+              } else {
+                // Select if it wasn't selected when first tap occurred
+                handleEdgeSelect(edge);
+              }
+              lastTapTime = 0;
+              lastTapEdge = null;
+              lastTapWasSelected = false;
+            } else {
+              // First tap - record for potential double-tap, including selection state
+              lastTapTime = currentTime;
+              lastTapEdge = edge;
+              lastTapWasSelected = isSelected; // Record if it was selected at first tap
+            }
+          }}
+          on:touchend|stopPropagation={(e) => {
+            // Handle single tap selection on touchend
+            // Wait a bit to see if a second tap comes (double-tap detection)
+            const edge = [fromId, toId];
+            const edgeKey = `${fromId}-${toId}`;
+            const savedLastTapTime = lastTapTime;
+            const savedLastTapEdge = lastTapEdge;
+            
+            setTimeout(() => {
+              // Only handle if no second tap occurred (check if values are still the same)
+              if (
+                lastTapTime === savedLastTapTime &&
+                lastTapEdge &&
+                savedLastTapEdge &&
+                lastTapEdge[0] === savedLastTapEdge[0] &&
+                lastTapEdge[1] === savedLastTapEdge[1]
+              ) {
+                // Single tap confirmed - select/deselect
+                touchHandled = true;
+                if (isSelected) {
+                  handleEdgeSelect(null);
+                } else {
+                  handleEdgeSelect(edge);
+                }
+                // Clear double-tap tracking
+                lastTapTime = 0;
+                lastTapEdge = null;
+                lastTapWasSelected = false;
+              }
+            }, DOUBLE_TAP_DELAY);
           }}
           on:mouseenter={() => (hoveredEdge = [fromId, toId])}
           on:mouseleave={() => (hoveredEdge = null)}
